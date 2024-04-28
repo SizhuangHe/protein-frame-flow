@@ -1,16 +1,15 @@
 """Neural network architecture for the flow model."""
 import torch
 from torch import nn
-from transformers import GPT2Model
 
-from models.node_embedder import NodeEmbedder
+from models.my_node_embedder import NodeEmbedder
 from models.edge_embedder import EdgeEmbedder
 from models import ipa_pytorch
 from data import utils as du
 
 
-
 class FlowModel(nn.Module):
+
     def __init__(self, model_conf):
         super(FlowModel, self).__init__()
         self._model_conf = model_conf

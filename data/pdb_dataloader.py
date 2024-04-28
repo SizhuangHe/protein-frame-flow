@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import pandas as pd
 import logging
+import os
 
 from data import utils as du
 from openfold.data import data_transforms
@@ -53,7 +54,6 @@ class PdbDataModule(LightningDataModule):
     def val_dataloader(self):
         return DataLoader(
             self._valid_dataset,
-            sampler=DistributedSampler(self._valid_dataset, shuffle=False),
             num_workers=2,
             prefetch_factor=2,
             persistent_workers=True,
@@ -154,7 +154,19 @@ class PdbDataset(Dataset):
         example_idx = idx
         csv_row = self.csv.iloc[example_idx]
         processed_file_path = csv_row['processed_path']
-        chain_feats = self._process_csv_row(processed_file_path)
+        # Your absolute path
+
+        # Current working directory, assumed known
+        current_dir = '/data/rsg/chemistry/jyim/projects/flow-matching'
+
+        # Calculate the relative path from the current directory
+        rel_path = os.path.relpath(processed_file_path, current_dir)
+
+        my_prefix = "/home/sh2748/protein-frame-flow"
+
+        csv_path = os.path.join(my_prefix, rel_path)
+
+        chain_feats = self._process_csv_row(csv_path)
         chain_feats['csv_idx'] = torch.ones(1, dtype=torch.long) * idx
         return chain_feats
 
@@ -174,11 +186,13 @@ class LengthBatcher:
         super().__init__()
         self._log = logging.getLogger(__name__)
         if num_replicas is None:
-            self.num_replicas = dist.get_world_size()
+            # self.num_replicas = dist.get_world_size()
+            self.num_replicas = 1
         else:
             self.num_replicas = num_replicas
         if rank is None:
-            self.rank = dist.get_rank()
+            # self.rank = dist.get_rank()
+            self.rank = 0
         else:
             self.rank = rank
 

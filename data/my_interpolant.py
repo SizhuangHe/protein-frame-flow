@@ -5,6 +5,8 @@ from scipy.spatial.transform import Rotation
 from data import all_atom
 import copy
 from scipy.optimize import linear_sum_assignment
+import numpy as np
+import torch.nn.functional as F
 
 
 def _centered_gaussian(num_batch, num_res, device):
@@ -19,12 +21,17 @@ def _uniform_so3(num_batch, num_res, device):
     ).reshape(num_batch, num_res, 3, 3)
 
 def _trans_diffuse_mask(trans_t, trans_1, diffuse_mask):
-    return trans_t * diffuse_mask[..., None] + trans_1 * (1 - diffuse_mask[..., None])
+    mask_expanded = diffuse_mask[..., None, None]  # expand mask from [B,N] to [B, N, 1, 1]
+    trans_1_expanded = trans_1[:, :, None, :] # shape [B, N, 1, 3]
+    a = trans_t * mask_expanded
+    b = trans_1_expanded * (1 - mask_expanded)
+    c = a+b
+    return trans_t * mask_expanded + trans_1_expanded * (1 - mask_expanded)
 
 def _rots_diffuse_mask(rotmats_t, rotmats_1, diffuse_mask):
     return (
-        rotmats_t * diffuse_mask[..., None, None]
-        + rotmats_1 * (1 - diffuse_mask[..., None, None])
+        rotmats_t * diffuse_mask[..., None, None, None]
+        + rotmats_1[:,:,None,:,:] * (1 - diffuse_mask[..., None, None, None])
     )
 
 
@@ -36,6 +43,7 @@ class Interpolant:
         self._trans_cfg = cfg.trans
         self._sample_cfg = cfg.sampling
         self._igso3 = None
+        self.num_per_flow = cfg.num_per_flow
 
     @property
     def igso3(self):
@@ -47,18 +55,51 @@ class Interpolant:
 
     def set_device(self, device):
         self._device = device
+    
+    def _pad_rotmats(self, rotmats_t):
+        '''
+            Pad rotmats_t from [B,N,l,3,3], 
+                where N is the actual number of residues (and N \leq max_num_res) 
+            to [B, max_num_res,l,3,3] with all 0's
+        '''
+        rotmats_t_padded = F.pad(rotmats_t, (0, 0, 0, 0, 0, 0, 0, self._cfg.max_num_res - rotmats_t.shape[1]), "constant", 0)
+        return rotmats_t_padded
+
+    def _pad_trans(self, trans_t):
+        '''
+            Pad rotmats_t from [B,N,l,3], 
+                where N is the actual number of residues (and N \leq max_num_res) 
+            to [B, max_num_res,l,3] with all 0's
+        '''
+        trans_t_padded = F.pad(trans_t, (0, 0, 0, 0, 0, self._cfg.max_num_res - trans_t.shape[1]), "constant", 0)
+        return trans_t_padded
+
+    def _pad_res_mask(self, res_mask):
+        '''
+            Pad rotmats from [B,N],
+                where N is the actual number of residues (and N \leq max_num_res) 
+            to [B, max_num_res] with all 1's
+
+            Note: pad with 1's not 0's
+        '''
+        res_mask_padded = F.pad(res_mask, (0, self._cfg.max_num_res - res_mask.shape[1]), mode='constant', value=1)
+        return res_mask_padded
 
     def sample_t(self, num_batch):
-       t = torch.rand(num_batch, device=self._device)
-       return t * (1 - 2*self._cfg.min_t) + self._cfg.min_t
+        t = torch.linspace(0,1,self.num_per_flow).to(self._device)
+        # print("Sample t shape: {}".format(t.shape))
+        return t
 
     def _corrupt_trans(self, trans_1, t, res_mask):
         trans_nm_0 = _centered_gaussian(*res_mask.shape, self._device)
         trans_0 = trans_nm_0 * du.NM_TO_ANG_SCALE
         trans_0 = self._batch_ot(trans_0, trans_1, res_mask)
-        trans_t = (1 - t[..., None]) * trans_0 + t[..., None] * trans_1
+        t_expanded = t.reshape(1,1,self.num_per_flow,1) # dimensions correspond to [B,N,l,1], we let B and N be 1 to let torch broadcase
+        trans_0_expanded = trans_0[:, :, np.newaxis, :]
+        trans_1_expanded = trans_1[:, :, np.newaxis, :]
+        trans_t = (1 - t_expanded) * trans_0_expanded + t_expanded * trans_1_expanded # trans_t has shape [B, N, l, 3]
         trans_t = _trans_diffuse_mask(trans_t, trans_1, res_mask)
-        return trans_t * res_mask[..., None]
+        return trans_t * res_mask[..., None, None]
     
     def _batch_ot(self, trans_0, trans_1, res_mask):
         num_batch, num_res = trans_0.shape[:2]
@@ -86,16 +127,18 @@ class Interpolant:
         noisy_rotmats = self.igso3.sample(
             torch.tensor([1.5]),
             num_batch*num_res
-        ).to(self._device)
-        noisy_rotmats = noisy_rotmats.reshape(num_batch, num_res, 3, 3)
+        ).to(self._device) # [1, B*N,3,3]
+        noisy_rotmats = noisy_rotmats.reshape(num_batch, num_res, 3, 3) # [B, N, 3, 3]
         rotmats_0 = torch.einsum(
-            "...ij,...jk->...ik", rotmats_1, noisy_rotmats) # matrix multiplication of corresponding batch, residue
-        rotmats_t = so3_utils.geodesic_t(t[..., None], rotmats_1, rotmats_0)
+            "...ij,...jk->...ik", rotmats_1, noisy_rotmats) # matrix multiplication of corresponding batch, residue, [B,N,3,3]
+        
+        
+        rotmats_t = so3_utils.my_geodesic_t(t[..., None], rotmats_1, rotmats_0)
         identity = torch.eye(3, device=self._device)
         rotmats_t = (
-            rotmats_t * res_mask[..., None, None]
-            + identity[None, None] * (1 - res_mask[..., None, None])
-        ) # mix rotmats_t with identity according to res_mask, but if res_mask is all 1s then nothing happens
+            rotmats_t * res_mask[..., None, None, None]
+            + identity[None, None, None] * (1 - res_mask[..., None, None, None])
+        ) # mix rotmats_t with identity according to res_mask, but if res_mask is all 1s then nothing happens, [B, N, l, 3, 3]
         return _rots_diffuse_mask(rotmats_t, rotmats_1, res_mask)
 
     def corrupt_batch(self, batch):
@@ -107,19 +150,27 @@ class Interpolant:
         # [B, N, 3, 3]
         rotmats_1 = batch['rotmats_1']
 
-        # [B, N]
+        # [B, l, N]
         res_mask = batch['res_mask']
         num_batch, _ = res_mask.shape
+        noisy_batch['res_mask'] = self._pad_res_mask(res_mask)
+        noisy_batch['res_mask'] = noisy_batch['res_mask'][:, None, :].repeat(1, self.num_per_flow ,1)
 
-        # [B, 1]
-        t = self.sample_t(num_batch)[:, None]
-        noisy_batch['t'] = t
+        # [B, l]
+        t = self.sample_t(num_batch) # [l]
+        noisy_batch['t'] = t.repeat(num_batch, 1)
 
         # Apply corruptions
+        # trans_t shape [B, l, max_num_res, 3]
         trans_t = self._corrupt_trans(trans_1, t, res_mask)
+        trans_t = self._pad_trans(trans_t) # [B, max_num_res, l, 3]
+        trans_t = trans_t.permute(0, 2, 1, 3) # swap to [B, l, max_num_res, 3]
         noisy_batch['trans_t'] = trans_t
 
+        # rotmats_t shape [B, l, max_num_res, 3, 3]
         rotmats_t = self._corrupt_rotmats(rotmats_1, t, res_mask)
+        rotmats_t = self._pad_rotmats(rotmats_t) # [B, max_num_res, l, 3, 3]
+        rotmats_t = rotmats_t.permute(0, 2, 1, 3, 4) # [B, l, max_num_res, 3, 3]
         noisy_batch['rotmats_t'] = rotmats_t
         return noisy_batch
     
@@ -153,6 +204,9 @@ class Interpolant:
             num_res,
             model,
         ):
+        
+        B, l, N = num_batch, self.num_per_flow, num_res
+
         res_mask = torch.ones(num_batch, num_res, device=self._device)
 
         # Set-up initial prior samples
@@ -162,59 +216,24 @@ class Interpolant:
         batch = {
             'res_mask': res_mask,
         }
-
-        # Set-up time
-        ts = torch.linspace(
-            self._cfg.min_t, 1.0, self._sample_cfg.num_timesteps)
-        t_1 = ts[0]
-
-        prot_traj = [(trans_0, rotmats_0)]
-        clean_traj = []
-        for t_2 in ts[1:]:
-
-            # Run model.
-            trans_t_1, rotmats_t_1 = prot_traj[-1]
-            batch['trans_t'] = trans_t_1
-            batch['rotmats_t'] = rotmats_t_1
-            t = torch.ones((num_batch, 1), device=self._device) * t_1
-            batch['t'] = t
-            with torch.no_grad():
-                model_out = model(batch)
-
-            # Process model output.
-            pred_trans_1 = model_out['pred_trans']
-            pred_rotmats_1 = model_out['pred_rotmats']
-            clean_traj.append(
-                (pred_trans_1.detach().cpu(), pred_rotmats_1.detach().cpu())
+        trans_0 = trans_0[:, :, None,:] # [B, N, 3] -> [B, N, 1, 3]
+        rotmats_0 = rotmats_0[:,:,None,:, :] # [B, N, 3, 3] -> [B, N, 1, 3, 3]
+        t = self.sample_t(num_batch)[None, :].repeat(num_batch,1).to(self._device) #[B, l]
+        rotmats_0 = self._pad_rotmats(rotmats_0).permute(0, 2, 1, 3, 4) # [B, 1, max_num_res, 3, 3]
+        trans_0 = self._pad_trans(trans_0).permute(0, 2, 1, 3) # [B, 1, max_num_res, 3]
+        batch['res_mask'] = batch['res_mask'][:,None,:].repeat(1, self.num_per_flow, 1) # [B, l, N]
+        batch["trans_t"] = trans_0 
+        batch["rotmats_t"] = rotmats_0
+        batch['t'] = t
+        with torch.no_grad():   
+            out = model.generate(batch)
+        out["pred_trans"] = out["pred_trans"].reshape(B, l, N, 3)
+        out["pred_rotmats"] = out["pred_rotmats"].reshape(B, l, N, 3, 3)
+        protein_trajectory = []
+        for i in range(out["pred_trans"].shape[1]):
+            protein_trajectory.append(
+                (out["pred_trans"][:, i, :, :].detach().cpu(), out["pred_rotmats"][:, i, :, :, :].detach().cpu())
             )
-            if self._cfg.self_condition:
-                batch['trans_sc'] = pred_trans_1
-
-            # Take reverse step
-            d_t = t_2 - t_1
-            trans_t_2 = self._trans_euler_step(
-                d_t, t_1, pred_trans_1, trans_t_1)
-            rotmats_t_2 = self._rots_euler_step(
-                d_t, t_1, pred_rotmats_1, rotmats_t_1)
-            prot_traj.append((trans_t_2, rotmats_t_2))
-            t_1 = t_2
-
-        # We only integrated to min_t, so need to make a final step
-        t_1 = ts[-1]
-        trans_t_1, rotmats_t_1 = prot_traj[-1]
-        batch['trans_t'] = trans_t_1
-        batch['rotmats_t'] = rotmats_t_1
-        batch['t'] = torch.ones((num_batch, 1), device=self._device) * t_1
-        with torch.no_grad():
-            model_out = model(batch)
-        pred_trans_1 = model_out['pred_trans']
-        pred_rotmats_1 = model_out['pred_rotmats']
-        clean_traj.append(
-            (pred_trans_1.detach().cpu(), pred_rotmats_1.detach().cpu())
-        )
-        prot_traj.append((pred_trans_1, pred_rotmats_1))
-
-        # Convert trajectories to atom37.
-        atom37_traj = all_atom.transrot_to_atom37(prot_traj, res_mask)
-        clean_atom37_traj = all_atom.transrot_to_atom37(clean_traj, res_mask)
-        return atom37_traj, clean_atom37_traj, clean_traj
+        atom37_traj = all_atom.transrot_to_atom37(protein_trajectory, res_mask)
+        
+        return atom37_traj, 0, 0

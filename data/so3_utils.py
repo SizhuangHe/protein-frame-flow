@@ -514,6 +514,25 @@ def geodesic_t(t: float, mat: torch.Tensor, base_mat: torch.Tensor, rot_vf=None)
             f'Incompatible shapes: base_mat={base_mat.shape}, mat_t={mat_t.shape}')
     return torch.einsum("...ij,...jk->...ik", base_mat, mat_t)
 
+def my_geodesic_t(t: float, mat: torch.Tensor, base_mat: torch.Tensor, rot_vf=None) -> torch.Tensor:
+    """
+    Computes the geodesic at time t. Specifically, R_t = Exp_{base_mat}(t * Log_{base_mat}(mat)).
+
+    Args:
+        t: time along geodesic.
+        mat: target points on manifold.
+        base_mat: source point on manifold.
+
+    Returns:
+        Point along geodesic starting at base_mat and ending at mat.
+    """
+    if rot_vf is None:
+        rot_vf = calc_rot_vf(base_mat, mat)[:,:,None,:] # [B,N,1,3]
+    mat_t = rotvec_to_rotmat(t[None, None, :,:] * rot_vf) # change t to [1,1,l,1]
+    # if base_mat.shape != mat_t.shape:
+    #     raise ValueError(
+    #         f'Incompatible shapes: base_mat={base_mat.shape}, mat_t={mat_t.shape}')
+    return torch.einsum("...ij,...jk->...ik", base_mat[:,:,None,:,:], mat_t)
 
 class SO3LookupCache:
     def __init__(
