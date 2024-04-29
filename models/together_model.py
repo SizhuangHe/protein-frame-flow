@@ -21,12 +21,15 @@ class ProteinVAELLMmodel(nn.Module):
 
         self.framediff_model = FlowModel(self._cfg_model)
 
-        # gpt2 = GPT2Model.from_pretrained('gpt2')
-        gpt2 = GPT2Model(GPT2Config())
+        gpt2 = GPT2Model.from_pretrained('gpt2')
+        # gpt2 = GPT2Model(GPT2Config())
         gpt2.wte=None
         
         self.vaellm_model = VAE_GPT2(base_model=gpt2, emb_dim=self._cfg_llm.emb_dim, z_dim=self._cfg_llm.z_dim)
         # self.vaellm_model.attach_backward_hooks()
+
+        self.lin_emb_backbone = nn.Linear(768, 768)
+        self.lin_deembed_backbone = nn.Linear(768, 768)
 
     def _get_bb_reps(self, noisy_batch):
         '''
@@ -70,12 +73,19 @@ class ProteinVAELLMmodel(nn.Module):
         ones = torch.ones(B, l, z.shape[2], 1).to(recovered_trans.device) # TODO will need to change here
         recovered_quats = torch.cat((ones, recovered_reduced_quats), dim=-1)
         recovered_quats = F.normalize(recovered_quats, p=2, dim=-1) # normalize (1,x,y,z) as AlphaFold did
+
         recovered_rots = ru.quat_to_rot(recovered_quats)
+
         return recovered_rots, recovered_trans
 
 
     def forward(self, noisy_batch):
-        backbone = self._get_bb_reps(noisy_batch)
+        self._check_for_nans()
+
+        backbone = self._get_bb_reps(noisy_batch) # [B, l, 6N] N=128
+
+        # TEMP: testing embedding projection
+        backbone = self.lin_emb_backbone(backbone)
 
         llm_out = self.vaellm_model(backbone)
 
@@ -86,11 +96,15 @@ class ProteinVAELLMmodel(nn.Module):
         # print(noisy_batch['rotmats_t'].shape)
         B, l, N, _, _ = noisy_batch['rotmats_t'].shape
         
-        z = llm_out["z_sampled"].reshape(B, l, 128, -1) # TODO will need to change here
+        # TEMP: testing embedding projection
+        z = self.lin_deembed_backbone(llm_out["z_sampled"])
+        
+        z = z.reshape(B, l, 128, -1) # TODO will need to change here. | Q: Should z.requires_grad == True? Right now is false
+
         
         # Recover rotation matrices and translation vectors
-        recovered_rots, recovered_trans = self._recover_rots_trans(z)
-        
+        recovered_rots, recovered_trans = self._recover_rots_trans(z) # [B, l, N, 3, 3], [B, l, N, 3]
+        # print(f"Recovered rotations and transvectors: {recovered_rots.shape, recovered_trans.shape}")
         # Process shapes
         noisy_batch['processed_rotmats_t'] = recovered_rots
         noisy_batch['processed_trans_t'] = recovered_trans
@@ -110,6 +124,8 @@ class ProteinVAELLMmodel(nn.Module):
         }
     
     def generate(self, noisy_batch, T=1):
+        self._check_for_nans()
+
         backbone = self._get_bb_reps(noisy_batch)
         llm_out = self.vaellm_model.generate(backbone, temperature=T, max_length=self.num_per_flow)
         B = noisy_batch["rotmats_t"].shape[0]
@@ -136,6 +152,26 @@ class ProteinVAELLMmodel(nn.Module):
         noisy_batch['res_mask'] = noisy_batch['res_mask'].reshape(B, l, -1)
         
         return framediff_out
+
+    def _check_for_nans(self):
+        nan_params = []
+        all_params = []
+
+        # Iterate through all named parameters in the model
+        for name, param in self.named_parameters():
+            all_params.append(name)  # Track all parameters
+            if torch.isnan(param).any():
+                nan_params.append(name)  # Track parameters with NaNs
+
+        # Determine which parameters do not have NaNs
+        non_nan_params = [name for name in all_params if name not in nan_params]
+
+        # Output results
+        print("Parameters with NaNs:", nan_params)
+        print("Parameters without NaNs:", non_nan_params)
+
+
+    
     
     def attach_backward_hooks(self):
         """ Attach full backward hooks to all layers to check for NaNs in gradients. """

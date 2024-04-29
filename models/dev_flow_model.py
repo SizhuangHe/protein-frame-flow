@@ -91,7 +91,7 @@ class FlowModel(nn.Module):
                 curr_rigids,
                 node_mask)
             # print("IPA embed shape: {}".format(ipa_embed.shape))
-            ipa_embed *= node_mask[..., None]
+            ipa_embed = ipa_embed * node_mask[..., None]
             node_embed = self.trunk[f'ipa_ln_{b}'](node_embed + ipa_embed)
             seq_tfmr_out = self.trunk[f'seq_tfmr_{b}'](
                 node_embed, src_key_padding_mask=(1 - node_mask).bool())
@@ -113,7 +113,7 @@ class FlowModel(nn.Module):
             if b < self._ipa_conf.num_blocks-1:
                 edge_embed = self.trunk[f'edge_transition_{b}'](
                     node_embed, edge_embed)
-                edge_embed *= edge_mask[..., None]
+                edge_embed = edge_embed * edge_mask[..., None]
                 # print("Inside for loop: Edge embed shape: {}".format(edge_embed.shape))
 
         curr_rigids = self.rigids_nm_to_ang(curr_rigids) # from nanometer to angstorm, change of units

@@ -39,7 +39,9 @@ class Experiment:
         else:
             logger = WandbLogger(
                 **self._exp_cfg.wandb,
+                log_model="all"
             )
+            logger.watch(self._model.model, log="all", log_freq=1)
             
             # Checkpoint directory.
             ckpt_dir = self._exp_cfg.checkpointer.dirpath
@@ -68,7 +70,7 @@ class Experiment:
             enable_progress_bar=True,
             enable_model_summary=True,
             devices=devices,
-            fast_dev_run=7
+
         )
         trainer.fit(
             model=self._model,

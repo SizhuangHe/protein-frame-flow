@@ -24,13 +24,13 @@ class VAE_GPT2(nn.Module):
         return mu, log_sigma
     
     def _reparametrize(self, mu, log_sigma):
-        sigma = torch.exp(log_sigma)
+        sigma = torch.exp(log_sigma + 1e-8)
         epsilon = torch.randn_like(sigma)
         return mu + sigma * epsilon
 
     def forward(self, input_embeddings, attention_mask=None):
-        nan_params = self._check_for_nans()
-        print("NaN in model parameters: {}".format(nan_params))
+        # nan_params = self._check_for_nans()
+        # print("NaN in model parameters: {}".format(nan_params))
         mu, log_sigma = self._encode(input_embeddings, attention_mask)
         
         z_sampled = self._reparametrize(mu, log_sigma)
@@ -40,13 +40,6 @@ class VAE_GPT2(nn.Module):
             "mu": mu,
             "log_sigma": log_sigma
         }
-    
-    def _check_for_nans(self):
-        nan_params = []
-        for name, param in self.named_parameters():
-            if torch.isnan(param).any():
-                nan_params.append(name)
-        return nan_params
     
     def generate_next_tokens(self, input_ids, temperature=1, attention_mask=None):
         assert not temperature < 0, "Temperature should be non-negative!"
@@ -59,8 +52,8 @@ class VAE_GPT2(nn.Module):
         return z_sampled[:, -1, :].unsqueeze(1)
 
     def generate(self, input_ids, temperature=1, max_length=100):
-        nan_params = self._check_for_nans()
-        print("NaN in model parameters: {}".format(nan_params))
+        # nan_params = self._check_for_nans()
+        # print("NaN in model parameters: {}".format(nan_params))
         output_sequences = input_ids
         while output_sequences.shape[1] < max_length:
             next_tokens = self.generate_next_tokens(output_sequences, temperature)

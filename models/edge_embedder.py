@@ -53,5 +53,5 @@ class EdgeEmbedder(nn.Module):
         all_edge_feats = torch.concat(
             [cross_node_feats, relpos_feats, dist_feats, sc_feats], dim=-1)
         edge_feats = self.edge_embedder(all_edge_feats)
-        edge_feats *= p_mask.unsqueeze(-1)
+        edge_feats = edge_feats * p_mask.unsqueeze(-1)
         return edge_feats

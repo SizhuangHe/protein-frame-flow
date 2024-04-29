@@ -19,7 +19,7 @@ data:
 
 interpolant:
   max_num_res: 128
-  num_per_flow: 16
+  num_per_flow: 2
   min_t: 1e-2
   rots:
     train_schedule: linear
@@ -68,7 +68,7 @@ model:
     z_dim: 768
 
 experiment:
-  debug: True
+  debug: False
   seed: 123
   num_devices: 1
   warm_start: null
@@ -95,7 +95,7 @@ experiment:
     save_code: True
     tags: []
   optimizer:
-    lr: 0.000000
+    lr: 0.000001
   trainer:
     overfit_batches: 1
     min_epochs: 1 # prevents early stopping
