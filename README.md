@@ -1,3 +1,15 @@
+My changes:
+- ```my_interpolant.py```: instead of only sampling one time point per trajectory, I sample ```l``` time points per trajectory.
+- ```models/vaellm_model.py```: this implements our LLM+VAE model
+- ```together_model.py```: this implements the model altogether, consisting of a vaellm model + their framediff model.
+and modified other files.
+
+
+
+
+
+Below is the original README
+
 # Fast protein backbone generation with SE(3) flow matching
 
 
