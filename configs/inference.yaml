@@ -8,13 +8,15 @@ inference:
   # Use this to write with date-time stamp.
   name: run_${now:%Y-%m-%d}_${now:%H-%M}
   seed: 123
-  ckpt_path: weights/published.ckpt
+  ckpt_path: /home/sh2748/protein-frame-flow/weights/published.ckpt
   output_dir: inference_outputs/
 
   use_gpu: True
-  num_gpus: 2
+  num_gpus: 1
 
   interpolant:
+    num_per_flow: 16
+    max_num_res: 128
     min_t: 1e-2
     rots:
       corrupt: True
@@ -46,3 +48,4 @@ inference:
     length_subset: null
 
     overwrite: False
+  

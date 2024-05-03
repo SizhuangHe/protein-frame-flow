@@ -14,12 +14,12 @@ data:
     num_workers: 8
     prefetch_factor: 10
   sampler:
-    max_batch_size: 2
+    max_batch_size: 8
     max_num_res_squared: 500_000
 
 interpolant:
   max_num_res: 128
-  num_per_flow: 2
+  num_per_flow: 16
   min_t: 1e-2
   rots:
     train_schedule: linear
@@ -33,6 +33,8 @@ interpolant:
   self_condition: ${model.edge_features.self_condition}
 
 model:
+  llm_encoder_only: True
+  pretrained_LLM: True
   node_embed_size: 128
   edge_embed_size: 64
   symmetric: False
@@ -62,7 +64,7 @@ model:
     no_v_points: 12
     seq_tfmr_num_heads: 4
     seq_tfmr_num_layers: 2
-    num_blocks: 2
+    num_blocks: 1
   llm:
     emb_dim: 768
     z_dim: 768
@@ -89,25 +91,26 @@ experiment:
     rotation_loss_weights: 1.0
     aux_loss_weight: 1.0
     aux_loss_t_pass: 0.25
+    kl_div_beta: 0.2
   wandb:
     name: baseline
     project: se3-fm
     save_code: True
-    tags: []
+    tags: ["debug"]
   optimizer:
-    lr: 0.000001
+    lr: 0.00001
   trainer:
-    overfit_batches: 1
+    overfit_batches: 0
     min_epochs: 1 # prevents early stopping
-    max_epochs: 200
+    max_epochs: 50
     accelerator: gpu
     log_every_n_steps: 1
     deterministic: False
     strategy: ddp
-    check_val_every_n_epoch: 2
-    accumulate_grad_batches: 1
+    check_val_every_n_epoch: 10
+    accumulate_grad_batches: 2
   checkpointer:
-    dirpath: ckpt/${experiment.wandb.project}/${experiment.wandb.name} #/${now:%Y-%m-%d}_${now:%H-%M-%S}
+    dirpath: /vast/palmer/scratch/dijk/sh2748/protein_ckpt/${experiment.wandb.project}/${experiment.wandb.name}/${now:%Y-%m-%d}_${now:%H-%M-%S}
     save_last: True
     save_top_k: 3
     monitor: valid/non_coil_percent

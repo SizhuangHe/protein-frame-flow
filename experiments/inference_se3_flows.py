@@ -8,7 +8,7 @@ import GPUtil
 from pytorch_lightning import Trainer
 from omegaconf import DictConfig, OmegaConf
 from experiments import utils as eu
-from models.flow_module import FlowModule
+from models.my_flow_module import FlowModule
 
 torch.set_float32_matmul_precision('high')
 log = eu.get_pylogger(__name__)

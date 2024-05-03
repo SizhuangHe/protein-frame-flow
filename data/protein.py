@@ -204,10 +204,37 @@ def to_pdb(prot: Protein, model=1, add_end=True) -> str:
       element = atom_name[0]  # Protein supports only C, N, O, S, this works.
       charge = ''
       # PDB is a columnar format, every space matters here!
+
+      # Adjusting the digits after decimal
+      pos_x = pos[0]
+      if abs(pos_x) < 10:
+          x_fmt = f'{pos_x:>8.3f}'
+      elif abs(pos_x) < 100:
+          x_fmt = f'{pos_x:>8.2f}'
+      else:
+          x_fmt = f'{pos_x:>8.1f}'
+
+      pos_y = pos[1]
+      if abs(pos_y) < 10:
+          y_fmt = f'{pos_y:>8.3f}'
+      elif abs(pos_y) < 100:
+          y_fmt = f'{pos_y:>8.2f}'
+      else:
+          y_fmt = f'{pos_y:>8.1f}'
+
+      pos_z = pos[2]
+      if abs(pos_z) < 10:
+          z_fmt = f'{pos_z:>8.3f}'
+      elif abs(pos_z) < 100:
+          z_fmt = f'{pos_z:>8.2f}'
+      else:
+          z_fmt = f'{pos_z:>8.1f}'
+
+
       atom_line = (f'{record_type:<6}{atom_index:>5} {name:<4}{alt_loc:>1}'
                    f'{res_name_3:>3} {chain_ids[chain_index[i]]:>1}'
                    f'{residue_index[i]:>4}{insertion_code:>1}   '
-                   f'{pos[0]:>8.3f}{pos[1]:>8.3f}{pos[2]:>8.3f}'
+                   f'{x_fmt}{y_fmt}{z_fmt}'
                    f'{occupancy:>6.2f}{b_factor:>6.2f}          '
                    f'{element:>2}{charge:>2}')
       pdb_lines.append(atom_line)

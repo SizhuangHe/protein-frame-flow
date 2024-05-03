@@ -41,7 +41,7 @@ class LengthDataset(torch.utils.data.Dataset):
 def save_traj(
         sample: np.ndarray,
         bb_prot_traj: np.ndarray,
-        x0_traj: np.ndarray,
+        # x0_traj: np.ndarray,
         diffuse_mask: np.ndarray,
         output_dir: str,
         aatype = None,
@@ -72,7 +72,7 @@ def save_traj(
     diffuse_mask = diffuse_mask.astype(bool)
     sample_path = os.path.join(output_dir, 'sample.pdb')
     prot_traj_path = os.path.join(output_dir, 'bb_traj.pdb')
-    x0_traj_path = os.path.join(output_dir, 'x0_traj.pdb')
+    # x0_traj_path = os.path.join(output_dir, 'x0_traj.pdb')
 
     # Use b-factors to specify which residues are diffused.
     b_factors = np.tile((diffuse_mask * 100)[:, None], (1, 37))
@@ -91,17 +91,17 @@ def save_traj(
         no_indexing=True,
         aatype=aatype,
     )
-    x0_traj_path = au.write_prot_to_pdb(
-        x0_traj,
-        x0_traj_path,
-        b_factors=b_factors,
-        no_indexing=True,
-        aatype=aatype
-    )
+    # x0_traj_path = au.write_prot_to_pdb(
+    #     x0_traj,
+    #     x0_traj_path,
+    #     b_factors=b_factors,
+    #     no_indexing=True,
+    #     aatype=aatype
+    # )
     return {
         'sample_path': sample_path,
         'traj_path': prot_traj_path,
-        'x0_traj_path': x0_traj_path,
+        #'x0_traj_path': x0_traj_path,
     }
 
 

@@ -10,7 +10,7 @@ import logging
 from pytorch_lightning import LightningModule
 from analysis import metrics 
 from analysis import utils as au
-from models.together_model import ProteinVAELLMmodel
+from models.together_model import ProteinVAELLMmodel, ProteinVAELLM_encoder_only_model
 from models import utils as mu
 from data.my_interpolant import Interpolant 
 from data import utils as du
@@ -34,8 +34,11 @@ class FlowModule(LightningModule):
         self._interpolant_cfg = cfg.interpolant
 
         # Set-up vector field prediction model
-        self.model = ProteinVAELLMmodel(cfg)
-        self.model.attach_backward_hooks()
+        if self._model_cfg.llm_encoder_only:
+            self.model = ProteinVAELLM_encoder_only_model(cfg)
+        else:
+            self.model = ProteinVAELLMmodel(cfg)
+        # self.model.attach_backward_hooks()
 
         # Set-up interpolant
         self.interpolant = Interpolant(cfg.interpolant)
@@ -148,7 +151,8 @@ class FlowModule(LightningModule):
         kl_div = - 0.5 * kl_div.sum(dim=-1).mean()
         mse_loss = F.mse_loss(flat_shifted_pred_trans, flat_shifted_gt_trans) + F.mse_loss(flat_shifted_pred_rotmats, flat_shifted_gt_rotmats)
 
-        return {         "bb_atom_loss": bb_atom_loss,
+        return {         
+            "bb_atom_loss": bb_atom_loss,
             "dist_mat_loss": dist_mat_loss,
             "auxiliary_loss": auxiliary_loss,
             "kl_div": kl_div,
@@ -192,6 +196,7 @@ class FlowModule(LightningModule):
         self.validation_epoch_metrics.append(batch_metrics)
         
     def on_validation_epoch_end(self):
+        # pass
         if len(self.validation_epoch_samples) > 0:
             self.logger.log_table(
                 key='valid/samples',
@@ -272,7 +277,7 @@ class FlowModule(LightningModule):
         step_time = time.time() - step_start_time
         self._log_scalar(
             "train/examples_per_second", num_batch / step_time)
-        train_loss = total_losses["mse_loss"] + total_losses["auxiliary_loss"] + total_losses["kl_div"]
+        train_loss = total_losses["mse_loss"] + total_losses["auxiliary_loss"] + self._exp_cfg.training.kl_div_beta * total_losses["kl_div"]
         self._log_scalar(
             "train/loss", train_loss, batch_size=num_batch)
         return train_loss
@@ -307,7 +312,7 @@ class FlowModule(LightningModule):
         _ = eu.save_traj(
             bb_traj[-1],
             bb_traj,
-            np.flip(du.to_numpy(torch.concat(model_traj, dim=0)), axis=0),
+            # np.flip(du.to_numpy(torch.concat(model_traj, dim=0)), axis=0),
             du.to_numpy(diffuse_mask)[0],
             output_dir=sample_dir,
         )

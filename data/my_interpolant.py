@@ -227,12 +227,12 @@ class Interpolant:
         batch['t'] = t
         with torch.no_grad():   
             out = model.generate(batch)
-        out["pred_trans"] = out["pred_trans"].reshape(B, l, N, 3)
-        out["pred_rotmats"] = out["pred_rotmats"].reshape(B, l, N, 3, 3)
+        out["pred_T"]["pred_trans"] = out["pred_T"]["pred_trans"].reshape(B, l, N, 3)
+        out["pred_T"]["pred_rotmats"] = out["pred_T"]["pred_rotmats"].reshape(B, l, N, 3, 3)
         protein_trajectory = []
-        for i in range(out["pred_trans"].shape[1]):
+        for i in range(out["pred_T"]["pred_trans"].shape[1]):
             protein_trajectory.append(
-                (out["pred_trans"][:, i, :, :].detach().cpu(), out["pred_rotmats"][:, i, :, :, :].detach().cpu())
+                (out["pred_T"]["pred_trans"][:, i, :, :].detach().cpu(), out["pred_T"]["pred_rotmats"][:, i, :, :, :].detach().cpu())
             )
         atom37_traj = all_atom.transrot_to_atom37(protein_trajectory, res_mask)
         
