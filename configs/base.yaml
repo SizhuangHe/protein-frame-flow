@@ -14,7 +14,7 @@ data:
     num_workers: 8
     prefetch_factor: 10
   sampler:
-    max_batch_size: 8
+    max_batch_size: 2
     max_num_res_squared: 500_000
 
 interpolant:

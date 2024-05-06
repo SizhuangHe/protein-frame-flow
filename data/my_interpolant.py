@@ -141,7 +141,7 @@ class Interpolant:
         ) # mix rotmats_t with identity according to res_mask, but if res_mask is all 1s then nothing happens, [B, N, l, 3, 3]
         return _rots_diffuse_mask(rotmats_t, rotmats_1, res_mask)
 
-    def corrupt_batch(self, batch):
+    def corrupt_batch(self, batch, pad=True):
         noisy_batch = copy.deepcopy(batch)
 
         # [B, N, 3]
@@ -153,7 +153,8 @@ class Interpolant:
         # [B, l, N]
         res_mask = batch['res_mask']
         num_batch, _ = res_mask.shape
-        noisy_batch['res_mask'] = self._pad_res_mask(res_mask)
+        if pad:
+            noisy_batch['res_mask'] = self._pad_res_mask(res_mask)
         noisy_batch['res_mask'] = noisy_batch['res_mask'][:, None, :].repeat(1, self.num_per_flow ,1)
 
         # [B, l]
@@ -163,13 +164,15 @@ class Interpolant:
         # Apply corruptions
         # trans_t shape [B, l, max_num_res, 3]
         trans_t = self._corrupt_trans(trans_1, t, res_mask)
-        trans_t = self._pad_trans(trans_t) # [B, max_num_res, l, 3]
+        if pad:
+            trans_t = self._pad_trans(trans_t) # [B, max_num_res, l, 3]
         trans_t = trans_t.permute(0, 2, 1, 3) # swap to [B, l, max_num_res, 3]
         noisy_batch['trans_t'] = trans_t
 
         # rotmats_t shape [B, l, max_num_res, 3, 3]
         rotmats_t = self._corrupt_rotmats(rotmats_1, t, res_mask)
-        rotmats_t = self._pad_rotmats(rotmats_t) # [B, max_num_res, l, 3, 3]
+        if pad:
+            rotmats_t = self._pad_rotmats(rotmats_t) # [B, max_num_res, l, 3, 3]
         rotmats_t = rotmats_t.permute(0, 2, 1, 3, 4) # [B, l, max_num_res, 3, 3]
         noisy_batch['rotmats_t'] = rotmats_t
         return noisy_batch

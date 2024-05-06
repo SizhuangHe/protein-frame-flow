@@ -211,8 +211,8 @@ def rot_to_quat(
     if(rot.shape[-2:] != (3, 3)):
         raise ValueError("Input rotation is incorrectly shaped")
 
-    rot = [[rot[..., i, j] for j in range(3)] for i in range(3)]
-    [[xx, xy, xz], [yx, yy, yz], [zx, zy, zz]] = rot 
+    rot_cp = [[rot[..., i, j] for j in range(3)] for i in range(3)]
+    [[xx, xy, xz], [yx, yy, yz], [zx, zy, zz]] = rot_cp 
 
     k = [
         [ xx + yy + zz,      zy - yz,      xz - zx,      yx - xy,],
@@ -224,7 +224,14 @@ def rot_to_quat(
     k = (1./3.) * torch.stack([torch.stack(t, dim=-1) for t in k], dim=-2)
 
     _, vectors = torch.linalg.eigh(k)
-    return vectors[..., -1]
+    # print(f"Eigvals: {eigvals}")
+    
+    quats = vectors[..., -1]
+    print(f"k requires grad: {k.requires_grad}")
+    print(f"Inside rot to quat: vector requires grad: {vectors.requires_grad}")
+    print(f"Inside rot to quat: quats requires grad: {quats.requires_grad}")
+    print(f"Inside rot to quat: vector shape: {vectors.shape}")
+    return quats
 
 
 _QUAT_MULTIPLY = np.zeros((4, 4, 4))
@@ -281,7 +288,7 @@ def invert_rot_mat(rot_mat: torch.Tensor):
 
 def invert_quat(quat: torch.Tensor):
     quat_prime = quat.clone()
-    quat_prime[..., 1:] *= -1
+    quat_prime[..., 1:] = quat_prime[..., 1:] * (-1)
     inv = quat_prime / torch.sum(quat ** 2, dim=-1, keepdim=True)
     return inv
 
