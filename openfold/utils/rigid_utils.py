@@ -223,8 +223,8 @@ def rot_to_quat(
 
     k = (1./3.) * torch.stack([torch.stack(t, dim=-1) for t in k], dim=-2)
 
-    _, vectors = torch.linalg.eigh(k)
-    # print(f"Eigvals: {eigvals}")
+    eigvals, vectors = torch.linalg.eigh(k)
+    print(f"Eigvals: {eigvals}")
     
     quats = vectors[..., -1]
     print(f"k requires grad: {k.requires_grad}")

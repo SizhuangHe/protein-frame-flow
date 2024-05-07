@@ -197,7 +197,6 @@ class ProteinVAELLMmodel(nn.Module):
         if not output_nan_detected:
             print(f"No NaNs detected in any gradient outputs of {module.__class__.__name__}")
 
-
 class ProteinVAELLM_encoder_only_model(nn.Module):
     def __init__(self, cfg):
         super(ProteinVAELLM_encoder_only_model, self).__init__()
@@ -394,7 +393,7 @@ class ProteinVAELLM_FrameDiff_first_model(nn.Module):
     
     def _pad_trans(self, trans_t):
         '''
-            Pad rotmats_t from [B, l, N,3], 
+            Pad rotmats_t from [B, l, N, 3], 
                 where N is the actual number of residues (and N \leq max_num_res) 
             to [B, l, max_num_res, 3] with all 0's
         '''
@@ -403,11 +402,23 @@ class ProteinVAELLM_FrameDiff_first_model(nn.Module):
     
     def _pad_rotmats(self, rotmats_t):
         '''
-            Pad rotmats_t from [B,l,N,3,3], 
-                where N is the actual number of residues (and N \leq max_num_res) 
-            to [B, l, max_num_res,3,3] with all 0's
+        Pad rotmats_t from [B,l,N,3,3],
+        where N is the actual number of residues (and N <= max_num_res)
+        to [B, l, max_num_res,3,3] with identity matrices
         '''
-        rotmats_t_padded = F.pad(rotmats_t, (0, 0, 0, 0, 0, self.max_num_res - rotmats_t.shape[2]), "constant", 0)
+        batch_size, seq_length, num_residues, _, _ = rotmats_t.shape
+        identity_mat = torch.eye(3, dtype=rotmats_t.dtype, device=rotmats_t.device)
+        
+        # Create identity matrices with the desired shape
+        identity_mats = identity_mat[None, None, None, :, :]  # [1, 1, 1, 3, 3]
+        identity_mats = identity_mats.expand(batch_size, seq_length, -1, -1, -1)  # [B, l, 1, 3, 3]
+        
+        # Pad with identity matrices
+        rotmats_t_padded = F.pad(rotmats_t, (0, 0, 0, 0, 0, self.max_num_res - rotmats_t.shape[2]), "constant", 1)
+        
+        # Replace the padded parts with identity matrices
+        rotmats_t_padded[:, :, num_residues:, :, :] = identity_mats[:, :, :self.max_num_res - num_residues, :, :]
+        
         return rotmats_t_padded
 
     def _get_bb_reps(self, rotmats_t, trans_t):
@@ -423,6 +434,8 @@ class ProteinVAELLM_FrameDiff_first_model(nn.Module):
         condition = condition[..., None]
         quats = torch.where(condition, quats * (-1), quats)
         quats = quats[..., 1:] # [B, l, N, 3]
+
+        quats = F.pad(quats, (0, 0, 0, self.max_num_res - quats.shape[2]), "constant", 1) # DEBUG: try 1
         
         # Concatenate with translation vectors
         concat_quats_trans = torch.cat((quats, trans_t), dim=-1) # [B, l, N, 6]
@@ -488,7 +501,7 @@ class ProteinVAELLM_FrameDiff_first_model(nn.Module):
 
         # Pad for LLM
         pred_trans = self._pad_trans(pred_trans)
-        pred_rotmats = self._pad_rotmats(pred_rotmats)
+        # pred_rotmats = self._pad_rotmats(pred_rotmats)
 
         backbone = self._get_bb_reps(pred_rotmats, pred_trans) # [B, l, 6 * max_num_res]
 
@@ -589,3 +602,4 @@ class ProteinVAELLM_FrameDiff_first_model(nn.Module):
             print(f"No NaNs detected in any gradient inputs of {module.__class__.__name__}")
         if not output_nan_detected:
             print(f"No NaNs detected in any gradient outputs of {module.__class__.__name__}")
+

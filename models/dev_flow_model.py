@@ -122,4 +122,5 @@ class FlowModel(nn.Module):
         return {
             'pred_trans': pred_trans,
             'pred_rotmats': pred_rotmats,
+            'node_embed': node_embed
         }
