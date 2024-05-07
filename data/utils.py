@@ -444,3 +444,54 @@ def process_chain(chain: Chain, chain_id: str) -> Protein:
         residue_index=np.array(residue_index),
         chain_index=np.array(chain_ids),
         b_factors=np.array(b_factors))
+
+def rigid_transform_3D(A, B, verbose=False):
+    # Transforms A to look like B
+    # https://github.com/nghiaho12/rigid_transform_3D
+    assert A.shape == B.shape
+    A = A.T
+    B = B.T
+
+    num_rows, num_cols = A.shape
+    if num_rows != 3:
+        raise Exception(f"matrix A is not 3xN, it is {num_rows}x{num_cols}")
+
+    num_rows, num_cols = B.shape
+    if num_rows != 3:
+        raise Exception(f"matrix B is not 3xN, it is {num_rows}x{num_cols}")
+
+    # find mean column wise
+    centroid_A = np.mean(A, axis=1)
+    centroid_B = np.mean(B, axis=1)
+
+    # ensure centroids are 3x1
+    centroid_A = centroid_A.reshape(-1, 1)
+    centroid_B = centroid_B.reshape(-1, 1)
+
+    # subtract mean
+    Am = A - centroid_A
+    Bm = B - centroid_B
+
+    H = Am @ np.transpose(Bm)
+
+    # sanity check
+    #if linalg.matrix_rank(H) < 3:
+    #    raise ValueError("rank of H = {}, expecting 3".format(linalg.matrix_rank(H)))
+
+    # find rotation
+    U, S, Vt = np.linalg.svd(H)
+    R = Vt.T @ U.T
+
+    # special reflection case
+    reflection_detected = False
+    if np.linalg.det(R) < 0:
+        if verbose:
+            print("det(R) < R, reflection detected!, correcting for it ...")
+        Vt[2,:] *= -1
+        R = Vt.T @ U.T
+        reflection_detected = True
+
+    t = -R @ centroid_A + centroid_B
+    optimal_A = R @ A + t
+
+    return optimal_A.T, R, t, reflection_detected

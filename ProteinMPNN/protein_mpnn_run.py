@@ -337,15 +337,15 @@ def main(args):
                                     native_score_print = np.format_float_positional(np.float32(native_score.mean()), unique=False, precision=4)
                                     global_native_score_print = np.format_float_positional(np.float32(global_native_score.mean()), unique=False, precision=4)
                                     script_dir = os.path.dirname(os.path.realpath(__file__))
-                                    try:
-                                        commit_str = subprocess.check_output(f'git --git-dir {script_dir}/.git rev-parse HEAD', shell=True).decode().strip()
-                                    except subprocess.CalledProcessError:
-                                        commit_str = 'unknown'
+                                    # try:
+                                    #     commit_str = subprocess.check_output(f'git --git-dir {script_dir}/.git rev-parse HEAD', shell=True).decode().strip()
+                                    # except subprocess.CalledProcessError:
+                                    #     commit_str = 'unknown'
                                     if args.ca_only:
                                         print_model_name = 'CA_model_name'
                                     else:
                                         print_model_name = 'model_name'
-                                    f.write('>{}, score={}, global_score={}, fixed_chains={}, designed_chains={}, {}={}, git_hash={}, seed={}\n{}\n'.format(name_, native_score_print, global_native_score_print, print_visible_chains, print_masked_chains, print_model_name, args.model_name, commit_str, seed, native_seq)) #write the native sequence
+                                    f.write('>{}, score={}, global_score={}, fixed_chains={}, designed_chains={}, {}={}, seed={}\n{}\n'.format(name_, native_score_print, global_native_score_print, print_visible_chains, print_masked_chains, print_model_name, args.model_name, seed, native_seq)) #write the native sequence
                                 start = 0
                                 end = 0
                                 list_of_AAs = []
@@ -383,7 +383,7 @@ if __name__ == "__main__":
  
     argparser.add_argument("--ca_only", action="store_true", default=False, help="Parse CA-only structures and use CA-only models (default: false)")   
     argparser.add_argument("--path_to_model_weights", type=str, default="", help="Path to model weights folder;") 
-    argparser.add_argument("--device", type=str, default="1", help="CUDA device to use;") 
+    argparser.add_argument("--device", type=str, default="0", help="CUDA device to use;") 
     argparser.add_argument("--model_name", type=str, default="v_48_020", help="ProteinMPNN model name: v_48_002, v_48_010, v_48_020, v_48_030; v_48_010=version with 48 edges 0.10A noise")
 
     argparser.add_argument("--seed", type=int, default=0, help="If set to 0 then a random seed will be picked;")
